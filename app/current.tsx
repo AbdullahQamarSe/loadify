@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -22,7 +22,18 @@ import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import * as Location from "expo-location";
 import * as SecureStore from "expo-secure-store";
 
+import { AppDrawerContent, type DrawerMenuItem } from "@/components/app-drawer-content";
 import { API_BASE_URL } from "@/lib/api";
+import { LogBox } from 'react-native';
+
+if (!__DEV__) {
+  ErrorUtils.setGlobalHandler((error, isFatal) => {
+    console.log('Global error caught:', error);
+  });
+}
+
+LogBox.ignoreAllLogs(true);
+
 
 type UserData = {
   id?: string | number;
@@ -38,6 +49,10 @@ type LoadItem = {
   id: number;
   pickup_location?: string | null;
   drop_location?: string | null;
+  pickup_lat?: string | number | null;
+  pickup_lng?: string | number | null;
+  drop_lat?: string | number | null;
+  drop_lng?: string | number | null;
   weight?: string | number | null;
   load_type?: string | null;
   load_mode?: string | null;
@@ -72,6 +87,13 @@ type DrawerContentProps = DrawerContentComponentProps & {
 };
 
 const Drawer = createDrawerNavigator<DriverDrawerParamList>();
+
+const driverDrawerItems: DrawerMenuItem[] = [
+  { icon: "time-outline", label: "Driver Dashboard", route: "/driverdashboard" },
+  { icon: "chatbubbles-outline", label: "Requests", route: "/requests" },
+  { icon: "cube-outline", label: "Current Loads", route: "/current" },
+  { icon: "person-outline", label: "Profile", route: "/driverprofile" },
+];
 const { width, height } = Dimensions.get("window");
 const API_BASE = API_BASE_URL;
 
@@ -88,6 +110,25 @@ const parseLocation = (value?: string | null): LocationPoint | null => {
   const [lat, lng] = value.split(",").map((item) => Number(item.trim()));
   if (Number.isNaN(lat) || Number.isNaN(lng)) return null;
   return { latitude: lat, longitude: lng };
+};
+
+const toCoordinateNumber = (value?: string | number | null): number | null => {
+  if (value == null) return null;
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
+};
+
+const resolveLoadPoint = (
+  latitude?: string | number | null,
+  longitude?: string | number | null,
+  fallbackLocation?: string | null
+): LocationPoint | null => {
+  const lat = toCoordinateNumber(latitude);
+  const lng = toCoordinateNumber(longitude);
+  if (lat != null && lng != null) {
+    return { latitude: lat, longitude: lng };
+  }
+  return parseLocation(fallbackLocation);
 };
 
 const readJsonOrText = async (response: Response) => {
@@ -295,7 +336,7 @@ const CurrentLoadsScreen = () => {
           accuracy: Location.Accuracy.Balanced,
         });
 
-        await fetch(`${API_BASE}/driver/location-sync`, {
+        await fetch(`http://13.233.124.213:8000/api/driver/location-sync`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -339,7 +380,7 @@ const CurrentLoadsScreen = () => {
         throw new Error("Driver account not found.");
       }
 
-      const response = await fetch(`${API_BASE}/loads/current?driver_id=${encodeURIComponent(String(driverId))}`);
+      const response = await fetch(`http://13.233.124.213:8000/api/loads/current?driver_id=${encodeURIComponent(String(driverId))}`);
       const data = (await response.json()) as LoadItem[] | { error?: string };
 
       if (!response.ok) {
@@ -422,7 +463,7 @@ const CurrentLoadsScreen = () => {
 
     try {
       // Keep all picked loads in sync with one call and avoid per-load update failures.
-      const response = await fetch(`${API_BASE}/driver/location-sync`, {
+      const response = await fetch(`http://13.233.124.213:8000/api/driver/location-sync`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -454,7 +495,7 @@ const CurrentLoadsScreen = () => {
   };
 
   const updateLiveLocationAndRoute = async (load: LoadItem) => {
-    const destination = parseLocation(load.drop_location);
+    const destination = resolveLoadPoint(load.drop_lat, load.drop_lng, load.drop_location);
     if (!destination) {
       setRouteInfo(null);
       return;
@@ -489,7 +530,7 @@ const CurrentLoadsScreen = () => {
   };
 
   const openMapForLoad = async (load: LoadItem) => {
-    const destination = parseLocation(load.drop_location);
+    const destination = resolveLoadPoint(load.drop_lat, load.drop_lng, load.drop_location);
     if (!destination) {
       Alert.alert("Map unavailable", "This load does not have a valid drop location.");
       return;
@@ -511,7 +552,7 @@ const CurrentLoadsScreen = () => {
 
     trackingIntervalRef.current = setInterval(() => {
       updateLiveLocationAndRoute(selectedLoad);
-    }, 4000);
+    }, 7000);
 
     return () => {
       if (trackingIntervalRef.current) {
@@ -530,7 +571,7 @@ const CurrentLoadsScreen = () => {
 
     try {
       setPickingId(loadId);
-      const response = await fetch(`${API_BASE}/loads/${loadId}/pickup`, {
+      const response = await fetch(`http://13.233.124.213:8000/api/loads/${loadId}/pickup`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -563,7 +604,7 @@ const CurrentLoadsScreen = () => {
 
     try {
       setCompletingId(loadId);
-      const response = await fetch(`${API_BASE}/loads/${loadId}/complete`, {
+      const response = await fetch(`http://13.233.124.213:8000/api/loads/${loadId}/complete`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -590,9 +631,14 @@ const CurrentLoadsScreen = () => {
     }
   };
 
+  const selectedDropPoint = useMemo(
+    () => resolveLoadPoint(selectedLoad?.drop_lat, selectedLoad?.drop_lng, selectedLoad?.drop_location),
+    [selectedLoad?.drop_lat, selectedLoad?.drop_lng, selectedLoad?.drop_location]
+  );
+
   const modalPoints = [
     ...(driverPoint ? [driverPoint] : []),
-    ...(parseLocation(selectedLoad?.drop_location) ? [parseLocation(selectedLoad?.drop_location) as LocationPoint] : []),
+    ...(selectedDropPoint ? [selectedDropPoint] : []),
   ];
 
   return (
@@ -655,6 +701,13 @@ const CurrentLoadsScreen = () => {
                   {load.trader_name || "Trader"} {load.trader_phone ? `• ${load.trader_phone}` : ""}
                 </Text>
               </View>
+
+              {load.pickup_time ? (
+                <View style={styles.infoRow}>
+                  <Ionicons name="time-outline" size={18} color="#c12443" />
+                  <Text style={styles.infoText}>Schedule: {load.pickup_time}</Text>
+                </View>
+              ) : null}
 
               <View style={styles.actionRow}>
                 {load.status === "Accepted" && (
@@ -724,7 +777,7 @@ const CurrentLoadsScreen = () => {
             <Text style={styles.modalInfoTitle}>Driver to Drop Route</Text>
             <Text style={styles.modalInfoText}>{routeInfo?.distanceText || "Getting live route..."}</Text>
             <Text style={styles.modalInfoText}>
-              Updating driver location every 4 seconds
+              Updating driver location every 7 seconds
             </Text>
           </View>
 
@@ -747,8 +800,8 @@ const CurrentLoadsScreen = () => {
                 </Marker>
               )}
 
-              {parseLocation(selectedLoad?.drop_location) && (
-                <Marker coordinate={parseLocation(selectedLoad?.drop_location) as LocationPoint}>
+              {selectedDropPoint && (
+                <Marker coordinate={selectedDropPoint}>
                   <View style={[styles.mapMarker, styles.dropMarker]}>
                     <Ionicons name="flag" size={18} color="#fff" />
                   </View>
@@ -788,7 +841,14 @@ export default function CurrentLoadsPage() {
 
   return (
     <Drawer.Navigator
-      drawerContent={(props) => <CustomDrawerContent {...props} onLogout={handleLogout} />}
+      drawerContent={(props) => (
+        <AppDrawerContent
+          {...props}
+          items={driverDrawerItems}
+          onLogout={handleLogout}
+          defaultUserLabel="Driver"
+        />
+      )}
       screenOptions={{
         headerShown: false,
         drawerType: "front",

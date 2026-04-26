@@ -18,7 +18,18 @@ import { createDrawerNavigator } from "@react-navigation/drawer";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import * as SecureStore from "expo-secure-store";
 
+import { AppDrawerContent, type DrawerMenuItem } from "@/components/app-drawer-content";
 import { API_BASE_URL } from "@/lib/api";
+import { LogBox } from 'react-native';
+
+if (!__DEV__) {
+  ErrorUtils.setGlobalHandler((error, isFatal) => {
+    console.log('Global error caught:', error);
+  });
+}
+
+LogBox.ignoreAllLogs(true);
+
 
 type UserData = {
   id?: string | number;
@@ -52,6 +63,13 @@ type DrawerContentProps = DrawerContentComponentProps & {
 };
 
 const Drawer = createDrawerNavigator<ProfileDrawerParamList>();
+const traderDrawerItems: DrawerMenuItem[] = [
+  { icon: "add-circle-outline", label: "Create Load", route: "/traderdashboard" },
+  { icon: "cube-outline", label: "My Loads", route: "/myloads" },
+  { icon: "car-outline", label: "Partial Trucks", route: "/partialtruck" },
+  { icon: "locate-outline", label: "Find Truck", route: "/findtruck" },
+  { icon: "person-outline", label: "Profile", route: "/profile" },
+];
 
 async function readJsonOrText(response: Response) {
   const raw = await response.text();
@@ -177,7 +195,7 @@ const ProfileScreen = () => {
         throw new Error("User email not found");
       }
 
-      const response = await fetch(`${API_BASE_URL}/user/profile?email=${encodeURIComponent(sessionUser.email)}`);
+      const response = await fetch(`http://13.233.124.213:8000/api/user/profile?email=${encodeURIComponent(sessionUser.email)}`);
       const data = await readJsonOrText(response);
       if (!response.ok) {
         throw new Error(data.error || "Failed to load profile");
@@ -216,7 +234,7 @@ const ProfileScreen = () => {
 
     try {
       setIsSaving(true);
-      const response = await fetch(`${API_BASE_URL}/user/update`, {
+      const response = await fetch(`http://13.233.124.213:8000/api/user/update`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -375,7 +393,14 @@ export default function TraderProfilePage() {
 
   return (
     <Drawer.Navigator
-      drawerContent={(props) => <CustomDrawerContent {...props} onLogout={handleLogout} />}
+      drawerContent={(props) => (
+        <AppDrawerContent
+          {...props}
+          items={traderDrawerItems}
+          onLogout={handleLogout}
+          defaultUserLabel="Trader"
+        />
+      )}
       screenOptions={{
         headerShown: false,
         drawerType: "front",

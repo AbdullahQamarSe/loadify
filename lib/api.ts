@@ -43,7 +43,7 @@ function deriveApiUrlFromExpoHost(): string | undefined {
   return `http://${host}/api`;
 }
 
-const fallbackUrl = deriveApiUrlFromExpoHost() ?? 'http://127.0.0.1/api';
+const fallbackUrl = deriveApiUrlFromExpoHost() ?? 'http://13.233.124.213:8000/api';
 
 export const API_BASE_URL =
   process.env.EXPO_PUBLIC_API_URL ??
@@ -52,7 +52,7 @@ export const API_BASE_URL =
   fallbackUrl;
 
 async function request<T>(path: string, options: RequestInit): Promise<T> {
-  const url = `${API_BASE_URL}${path.startsWith('/') ? path : `/${path}`}`;
+  const url = `http://13.233.124.213:8000/api${path.startsWith('/') ? path : `/${path}`}`;
 
   const response = await fetch(url, {
     ...options,

@@ -15,13 +15,24 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import type { DrawerContentComponentProps, DrawerNavigationProp } from '@react-navigation/drawer';
+import type { DrawerNavigationProp } from '@react-navigation/drawer';
 import { createDrawerNavigator } from '@react-navigation/drawer';
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useNavigation } from '@react-navigation/native';
 import * as SecureStore from 'expo-secure-store';
 import * as Location from 'expo-location';
 
+import { AppDrawerContent, type DrawerMenuItem } from '@/components/app-drawer-content';
 import { API_BASE_URL } from '@/lib/api';
+import { LogBox } from 'react-native';
+
+if (!__DEV__) {
+  ErrorUtils.setGlobalHandler((error, isFatal) => {
+    console.log('Global error caught:', error);
+  });
+}
+
+LogBox.ignoreAllLogs(true);
+
 
 type UserData = {
   id?: string | number;
@@ -36,14 +47,28 @@ type UserData = {
   truckReg?: string | null;
   capacity?: string | null;
   available_capacity?: string | null;
+  remaining_capacity?: string | null;
+  pickup_city?: string | null;
+  drop_city?: string | null;
+};
+
+type DriverScheduleItem = {
+  id: number;
+  pickup_location?: string | null;
+  drop_location?: string | null;
+  pickup_time?: string | null;
+  status?: string | null;
+  weight?: string | number | null;
+};
+
+type DriverDashboardData = {
+  remaining_capacity?: string | number | null;
+  today_schedule_count?: number;
+  today_schedule?: DriverScheduleItem[];
 };
 
 type DriverDrawerParamList = {
   "Driver Home": undefined;
-};
-
-type DrawerContentProps = DrawerContentComponentProps & {
-  onLogout?: () => void;
 };
 
 const { width } = Dimensions.get('window');
@@ -60,169 +85,12 @@ const readJsonOrText = async (response: Response) => {
   }
 };
 
-// Custom Drawer Content with User Data
-const CustomDrawerContent = (props: DrawerContentProps) => {
-  const { onLogout } = props;
-  const [userData, setUserData] = useState<UserData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const router = useRouter();
-
-  // Load user data when drawer opens or screen focuses
-  const loadUserData = async () => {
-    try {
-      const userDataString = await SecureStore.getItemAsync('userData');
-      if (userDataString) {
-        const user = JSON.parse(userDataString) as UserData;
-        setUserData(user);
-      }
-    } catch (error) {
-      console.error('Error loading user data:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Load data when component mounts
-  useEffect(() => {
-    loadUserData();
-  }, []);
-
-  // Reload data when drawer is opened
-  useFocusEffect(
-    React.useCallback(() => {
-      loadUserData();
-    }, [])
-  );
-
-  const handleLogout = async () => {
-    Alert.alert(
-      "Logout",
-      "Are you sure you want to logout?",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Logout",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              await SecureStore.deleteItemAsync('userData');
-              await SecureStore.deleteItemAsync('userToken');
-              
-              // Close drawer first
-              props.navigation.closeDrawer();
-              
-              // Call the logout function from parent
-              if (onLogout) {
-                onLogout();
-              }
-            } catch (error) {
-              console.error('Error during logout:', error);
-              Alert.alert("Error", "Failed to logout. Please try again.");
-            }
-          }
-        }
-      ]
-    );
-  };
-
-  const navigateToPage = (pageName: string) => {
-    props.navigation.closeDrawer();
-    router.push(pageName as never);
-  };
-
-  return (
-    <View style={styles.drawerContainer}>
-      {/* Drawer Header with Gradient */}
-      <LinearGradient
-        colors={['#c12443', '#a01e36']}
-        style={styles.drawerHeader}
-      >
-        {loading ? (
-          <View style={styles.drawerUserInfo}>
-            <ActivityIndicator size="large" color="#fff" />
-            <Text style={[styles.drawerUserName, { marginTop: 10 }]}>Loading...</Text>
-          </View>
-        ) : userData ? (
-          <View style={styles.drawerUserInfo}>
-            <View style={styles.drawerUserIcon}>
-              <Ionicons name="person-circle" size={60} color="#fff" />
-            </View>
-            <Text style={styles.drawerUserName}>
-              {userData.name || userData.fullName || userData.username || 'Driver'}
-            </Text>
-            <Text style={styles.drawerUserEmail}>
-              {userData.email || userData.phone || 'No email provided'}
-            </Text>
-          </View>
-        ) : (
-          <View style={styles.drawerUserInfo}>
-            <Ionicons name="person-circle-outline" size={60} color="#fff" />
-            <Text style={styles.drawerUserName}>Guest User</Text>
-            <Text style={styles.drawerUserEmail}>Please login</Text>
-            <TouchableOpacity 
-              style={styles.loginButton}
-              onPress={() => navigateToPage('/login')}
-            >
-              <Text style={styles.loginButtonText}>Login</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-      </LinearGradient>
-
-      {/* Drawer Items - Driver Options */}
-      <TouchableOpacity 
-        style={styles.drawerItem}
-        onPress={() => navigateToPage('/driverdashboard')}
-      >
-        <Ionicons name="time-outline" size={24} color="#fff" />
-        <Text style={styles.drawerItemText}>Driver Dashboard</Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity 
-        style={styles.drawerItem}
-        onPress={() => navigateToPage('/requests')}
-      >
-        <Ionicons name="chatbubbles-outline" size={24} color="#fff" />
-        <Text style={styles.drawerItemText}>Requests</Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity 
-        style={styles.drawerItem}
-        onPress={() => navigateToPage('/current')}
-      >
-        <Ionicons name="cube-outline" size={24} color="#fff" />
-        <Text style={styles.drawerItemText}>Current Loads</Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity 
-        style={styles.drawerItem}
-        onPress={() => navigateToPage('/driverprofile')}
-      >
-        <Ionicons name="person-outline" size={24} color="#fff" />
-        <Text style={styles.drawerItemText}>Profile</Text>
-      </TouchableOpacity>
-
-      {/* Drawer Footer */}
-      <View style={styles.drawerFooter}>
-        {userData && (
-          <TouchableOpacity style={styles.drawerFooterItem} onPress={handleLogout}>
-            <Ionicons name="log-out-outline" size={22} color="#999" />
-            <Text style={styles.drawerFooterText}>Logout</Text>
-          </TouchableOpacity>
-        )}
-        {userData && (
-          <View style={styles.userInfoFooter}>
-            <Ionicons name="card-outline" size={16} color="#666" />
-            <Text style={styles.userIdText}>
-              ID: {userData.id || userData._id || 'N/A'}
-            </Text>
-          </View>
-        )}
-        <Text style={styles.drawerVersion}>Version 1.0.0</Text>
-      </View>
-    </View>
-  );
-};
+const driverDrawerItems: DrawerMenuItem[] = [
+  { icon: 'time-outline', label: 'Driver Dashboard', route: '/driverdashboard' },
+  { icon: 'chatbubbles-outline', label: 'Requests', route: '/requests' },
+  { icon: 'cube-outline', label: 'Current Loads', route: '/current' },
+  { icon: 'person-outline', label: 'Profile', route: '/driverprofile' },
+];
 
 // Driver Home Screen Component
 const DriverHomeScreen = () => {
@@ -230,7 +98,14 @@ const DriverHomeScreen = () => {
   const [currentUser, setCurrentUser] = useState<UserData | null>(null);
   const [loading, setLoading] = useState(true);
   const [leftWeight, setLeftWeight] = useState("");
+  const [pickupCity, setPickupCity] = useState("");
+  const [dropCity, setDropCity] = useState("");
   const [saving, setSaving] = useState(false);
+  const [dashboardData, setDashboardData] = useState<DriverDashboardData>({
+    remaining_capacity: null,
+    today_schedule_count: 0,
+    today_schedule: [],
+  });
 
   useEffect(() => {
     let intervalId: ReturnType<typeof setInterval> | null = null;
@@ -252,7 +127,7 @@ const DriverHomeScreen = () => {
           accuracy: Location.Accuracy.Balanced,
         });
 
-        await fetch(`${API_BASE_URL}/driver/location-sync`, {
+        await fetch(`http://13.233.124.213:8000/api/driver/location-sync`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -285,6 +160,19 @@ const DriverHomeScreen = () => {
     loadProfile();
   }, []);
 
+  const loadDashboard = async (driverId: string | number) => {
+    const response = await fetch(`http://13.233.124.213:8000/api/driver/dashboard/?driver_id=${encodeURIComponent(String(driverId))}`);
+    const data = await readJsonOrText(response);
+    if (!response.ok) {
+      throw new Error(data.error || "Failed to load driver dashboard data.");
+    }
+    setDashboardData({
+      remaining_capacity: data.remaining_capacity,
+      today_schedule_count: data.today_schedule_count || 0,
+      today_schedule: Array.isArray(data.today_schedule) ? data.today_schedule : [],
+    });
+  };
+
   const loadProfile = async () => {
     try {
       const stored = await SecureStore.getItemAsync("userData");
@@ -292,14 +180,19 @@ const DriverHomeScreen = () => {
 
       const sessionUser = JSON.parse(stored) as UserData;
       if (!sessionUser.email) throw new Error("Driver email not found");
+      const driverId = sessionUser.id || sessionUser._id;
+      if (!driverId) throw new Error("Driver account not found");
 
-      const response = await fetch(`${API_BASE_URL}/user/profile?email=${encodeURIComponent(sessionUser.email)}`);
+      const response = await fetch(`http://13.233.124.213:8000/api/user/profile?email=${encodeURIComponent(sessionUser.email)}`);
       const data = await readJsonOrText(response);
       if (!response.ok) throw new Error(data.error || "Failed to load profile");
 
       await SecureStore.setItemAsync("userData", JSON.stringify(data));
       setCurrentUser(data);
-      setLeftWeight(String(data.available_capacity ?? ""));
+      setLeftWeight(String(data.remaining_capacity ?? data.available_capacity ?? data.capacity ?? ""));
+      setPickupCity(String(data.pickup_city ?? ""));
+      setDropCity(String(data.drop_city ?? ""));
+      await loadDashboard(driverId);
     } catch (error) {
       Alert.alert("Error", error instanceof Error ? error.message : "Failed to load profile.");
     } finally {
@@ -316,13 +209,18 @@ const DriverHomeScreen = () => {
 
     const numericValue = Number(leftWeight);
     if (Number.isNaN(numericValue) || numericValue < 0) {
-      Alert.alert("Invalid value", "Please enter a valid left available weight.");
+      Alert.alert("Invalid value", "Please enter a valid available weight.");
+      return;
+    }
+
+    if (!pickupCity.trim() || !dropCity.trim()) {
+      Alert.alert("Missing route", "Please enter both pickup city and drop city.");
       return;
     }
 
     try {
       setSaving(true);
-      const response = await fetch(`${API_BASE_URL}/driver/post-availability`, {
+      const response = await fetch(`http://13.233.124.213:8000/api/driver/post-availability`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -331,6 +229,8 @@ const DriverHomeScreen = () => {
         body: JSON.stringify({
           driver_id: driverId,
           available_capacity: leftWeight,
+          pickup_city: pickupCity.trim(),
+          drop_city: dropCity.trim(),
         }),
       });
 
@@ -343,12 +243,17 @@ const DriverHomeScreen = () => {
         prev
           ? {
               ...prev,
-              available_capacity: String(data.truck?.available_capacity ?? leftWeight),
+              capacity: String(data.truck?.total_capacity ?? prev.capacity ?? leftWeight),
+              available_capacity: String(data.truck?.remaining_capacity ?? data.truck?.available_capacity ?? leftWeight),
+              remaining_capacity: String(data.truck?.remaining_capacity ?? data.truck?.available_capacity ?? leftWeight),
+              pickup_city: String(data.truck?.pickup_city ?? pickupCity.trim()),
+              drop_city: String(data.truck?.drop_city ?? dropCity.trim()),
             }
           : prev
       );
-      setLeftWeight(String(data.truck?.available_capacity ?? leftWeight));
-      Alert.alert("Success", "Left available weight updated.");
+      setLeftWeight(String(data.truck?.remaining_capacity ?? data.truck?.available_capacity ?? leftWeight));
+      await loadDashboard(driverId);
+      Alert.alert("Success", "Partial truck availability posted.");
     } catch (error) {
       Alert.alert("Error", error instanceof Error ? error.message : "Failed to update availability.");
     } finally {
@@ -391,34 +296,81 @@ const DriverHomeScreen = () => {
             <Text style={styles.loadingText}>Loading dashboard...</Text>
           </View>
         ) : (
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>Truck Overview</Text>
-            <Text style={styles.cardRow}>Truck: {currentUser?.truckType || "N/A"}</Text>
-            <Text style={styles.cardRow}>Registration: {currentUser?.truckReg || "N/A"}</Text>
-            <Text style={styles.cardRow}>Total Capacity: {currentUser?.capacity || "0"} kg</Text>
-            <Text style={styles.cardRow}>Current Left Weight: {currentUser?.available_capacity || "0"} kg</Text>
+          <>
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>Truck Overview</Text>
+              <Text style={styles.cardRow}>Truck: {currentUser?.truckType || "N/A"}</Text>
+              <Text style={styles.cardRow}>Registration: {currentUser?.truckReg || "N/A"}</Text>
+              <Text style={styles.cardRow}>Posted Capacity: {currentUser?.capacity || "0"} kg</Text>
+              <Text style={styles.cardRow}>Available Weight: {currentUser?.remaining_capacity || currentUser?.available_capacity || "0"} kg</Text>
+              <Text style={styles.cardRow}>Pickup City: {currentUser?.pickup_city || "Not set"}</Text>
+              <Text style={styles.cardRow}>Drop City: {currentUser?.drop_city || "Not set"}</Text>
+              <Text style={styles.cardRow}>
+                Remaining Capacity (Live): {dashboardData.remaining_capacity ?? currentUser?.remaining_capacity ?? currentUser?.available_capacity ?? "0"} kg
+              </Text>
 
-            <Text style={styles.label}>Post Left Available Weight (kg)</Text>
-            <TextInput
-              value={leftWeight}
-              onChangeText={(value) => setLeftWeight(value.replace(/[^0-9.]/g, ""))}
-              placeholder="Enter left available weight"
-              placeholderTextColor="#8f98a3"
-              keyboardType="numeric"
-              style={styles.input}
-            />
+              <Text style={styles.label}>Post Partial Capacity (kg)</Text>
+              <TextInput
+                value={leftWeight}
+                onChangeText={(value) => setLeftWeight(value.replace(/[^0-9.]/g, ""))}
+                placeholder="Enter available capacity"
+                placeholderTextColor="#8f98a3"
+                keyboardType="numeric"
+                style={styles.input}
+              />
+              <Text style={styles.label}>Pickup City</Text>
+              <TextInput
+                value={pickupCity}
+                onChangeText={setPickupCity}
+                placeholder="Enter pickup city"
+                placeholderTextColor="#8f98a3"
+                style={styles.input}
+              />
+              <Text style={styles.label}>Drop City</Text>
+              <TextInput
+                value={dropCity}
+                onChangeText={setDropCity}
+                placeholder="Enter drop city"
+                placeholderTextColor="#8f98a3"
+                style={styles.input}
+              />
 
-            <TouchableOpacity style={[styles.submitButton, saving && styles.disabledButton]} onPress={submitAvailability} disabled={saving}>
-              {saving ? (
-                <ActivityIndicator color="#fff" />
+              <TouchableOpacity style={[styles.submitButton, saving && styles.disabledButton]} onPress={submitAvailability} disabled={saving}>
+                {saving ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <>
+                    <Ionicons name="checkmark-circle-outline" size={20} color="#fff" />
+                    <Text style={styles.submitText}>Post Availability</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.scheduleCard}>
+              <Text style={styles.scheduleTitle}>Today Schedule ({dashboardData.today_schedule_count || 0})</Text>
+              {(dashboardData.today_schedule || []).length === 0 ? (
+                <Text style={styles.scheduleEmpty}>No assigned loads scheduled for today.</Text>
               ) : (
-                <>
-                  <Ionicons name="checkmark-circle-outline" size={20} color="#fff" />
-                  <Text style={styles.submitText}>Post Availability</Text>
-                </>
+                (dashboardData.today_schedule || []).map((item) => (
+                  <View key={item.id} style={styles.scheduleItem}>
+                    <View style={styles.scheduleItemTop}>
+                      <Text style={styles.scheduleItemId}>Load #{item.id}</Text>
+                      <Text style={styles.scheduleItemStatus}>{item.status || "Pending"}</Text>
+                    </View>
+                    <Text style={styles.scheduleText}>
+                      {item.pickup_location || "N/A"}
+                      {" -> "}
+                      {item.drop_location || "N/A"}
+                    </Text>
+                    <Text style={styles.scheduleMeta}>
+                      Weight: {item.weight || "0"} kg | Pickup: {item.pickup_time ? item.pickup_time : "N/A"}
+                    </Text>
+                  </View>
+                ))
               )}
-            </TouchableOpacity>
-          </View>
+            </View>
+          </>
         )}
       </ScrollView>
     </View>
@@ -444,7 +396,14 @@ export default function DriverDashboard() {
 
   return (
     <Drawer.Navigator
-      drawerContent={(props) => <CustomDrawerContent {...props} onLogout={handleLogout} />}
+      drawerContent={(props) => (
+        <AppDrawerContent
+          {...props}
+          items={driverDrawerItems}
+          onLogout={handleLogout}
+          defaultUserLabel="Driver"
+        />
+      )}
       screenOptions={{
         headerShown: false,
         drawerType: 'front',
@@ -573,6 +532,56 @@ const styles = StyleSheet.create({
   },
   disabledButton: {
     opacity: 0.7,
+  },
+  scheduleCard: {
+    marginTop: 14,
+    backgroundColor: "#11161d",
+    borderRadius: 20,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+  },
+  scheduleTitle: {
+    color: "#fff",
+    fontSize: 17,
+    fontWeight: "700",
+    marginBottom: 10,
+  },
+  scheduleEmpty: {
+    color: "#9aa4b0",
+    fontSize: 13,
+  },
+  scheduleItem: {
+    backgroundColor: "#0d1117",
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+    marginBottom: 8,
+  },
+  scheduleItemTop: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 6,
+  },
+  scheduleItemId: {
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  scheduleItemStatus: {
+    color: "#ffd9e1",
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  scheduleText: {
+    color: "#cbd3df",
+    fontSize: 12,
+    marginBottom: 4,
+  },
+  scheduleMeta: {
+    color: "#9ca6b3",
+    fontSize: 11,
   },
   welcomeCard: {
     borderRadius: 20,

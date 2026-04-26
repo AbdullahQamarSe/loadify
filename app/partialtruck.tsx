@@ -18,7 +18,18 @@ import { createDrawerNavigator } from "@react-navigation/drawer";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import * as SecureStore from "expo-secure-store";
 
+import { AppDrawerContent, type DrawerMenuItem } from "@/components/app-drawer-content";
 import { API_BASE_URL } from "@/lib/api";
+import { LogBox } from 'react-native';
+
+if (!__DEV__) {
+  ErrorUtils.setGlobalHandler((error, isFatal) => {
+    console.log('Global error caught:', error);
+  });
+}
+
+LogBox.ignoreAllLogs(true);
+
 
 type UserData = {
   name?: string;
@@ -32,7 +43,13 @@ type TruckItem = {
   id: number;
   truck_type?: string | null;
   registration_no?: string | null;
+  total_capacity?: string | number | null;
+  remaining_capacity?: string | number | null;
+  used_capacity?: string | number | null;
   available_capacity?: string | number | null;
+  pickup_city?: string | null;
+  drop_city?: string | null;
+  availability_status?: string | null;
   driver_id?: number | null;
   driver_name?: string | null;
   driver_phone?: string | null;
@@ -48,6 +65,13 @@ type DrawerContentProps = DrawerContentComponentProps & {
 };
 
 const Drawer = createDrawerNavigator<TraderDrawerParamList>();
+const traderDrawerItems: DrawerMenuItem[] = [
+  { icon: "add-circle-outline", label: "Create Load", route: "/traderdashboard" },
+  { icon: "cube-outline", label: "My Loads", route: "/myloads" },
+  { icon: "car-outline", label: "Partial Trucks", route: "/partialtruck" },
+  { icon: "locate-outline", label: "Find Truck", route: "/findtruck" },
+  { icon: "person-outline", label: "Profile", route: "/profile" },
+];
 
 const TraderDrawerContent = (props: DrawerContentProps) => {
   const [userData, setUserData] = useState<UserData | null>(null);
@@ -149,7 +173,7 @@ const PartialTruckScreen = () => {
         params.append("search", nextSearch);
       }
       const query = `?${params.toString()}`;
-      const response = await fetch(`${API_BASE_URL}/trucks${query}`);
+      const response = await fetch(`http://13.233.124.213:8000/api/trucks${query}`);
       const data = await readJsonOrText(response);
       if (!response.ok) {
         throw new Error(data.error || "Failed to load partial trucks");
@@ -178,6 +202,9 @@ const PartialTruckScreen = () => {
           driverName: truck.driver_name,
           truckType: truck.truck_type,
           registrationNo: truck.registration_no,
+          pickupCity: truck.pickup_city,
+          dropCity: truck.drop_city,
+          remainingCapacity: truck.remaining_capacity ?? truck.available_capacity,
           forcePartial: true,
         })
       );
@@ -197,7 +224,7 @@ const PartialTruckScreen = () => {
           </TouchableOpacity>
           <View style={styles.headerTitleContainer}>
             <Text style={styles.headerTitle}>Partial Trucks</Text>
-            <Text style={styles.headerSubtitle}>Book left available truck capacity</Text>
+            <Text style={styles.headerSubtitle}>Book by available posted capacity</Text>
           </View>
           <View style={styles.headerIcon}>
             <Ionicons name="layers-outline" size={24} color="#fff" />
@@ -236,24 +263,34 @@ const PartialTruckScreen = () => {
           <View style={styles.emptyCard}>
             <Ionicons name="car-outline" size={42} color="#c12443" />
             <Text style={styles.emptyTitle}>No partial trucks found</Text>
-            <Text style={styles.emptySubtitle}>Try another search term.</Text>
+            <Text style={styles.emptySubtitle}>Try updating pickup/drop cities.</Text>
           </View>
         ) : (
-          trucks.map((truck) => (
-            <View key={truck.id} style={styles.truckCard}>
-              <View style={styles.cardTopRow}>
-                <Text style={styles.driverName}>{truck.driver_name || "Driver"}</Text>
-                <Text style={styles.capacityText}>{truck.available_capacity || "0"} kg left</Text>
-              </View>
-              <Text style={styles.infoText}>{truck.truck_type || "Unknown truck"} • {truck.registration_no || "No reg"}</Text>
-              <Text style={styles.infoText}>{truck.driver_city || "Unknown city"} • {truck.driver_phone || "No phone"}</Text>
+          trucks.map((truck) => {
+            const remaining = Number(truck.remaining_capacity ?? truck.available_capacity ?? 0);
+            const isFull = Number.isNaN(remaining) || remaining <= 0;
+            return (
+              <View key={truck.id} style={styles.truckCard}>
+                <View style={styles.cardTopRow}>
+                  <Text style={styles.driverName}>{truck.driver_name || "Driver"}</Text>
+                  <Text style={styles.capacityText}>Available: {truck.remaining_capacity ?? truck.available_capacity ?? "0"} kg</Text>
+                </View>
+                <Text style={styles.infoText}>{truck.truck_type || "Unknown truck"} - {truck.registration_no || "No reg"}</Text>
+                <Text style={styles.infoText}>{truck.driver_city || "Unknown city"} - {truck.driver_phone || "No phone"}</Text>
+                <Text style={styles.infoText}>Route: {truck.pickup_city || "N/A"} -> {truck.drop_city || "N/A"}</Text>
+                <Text style={styles.infoText}>Status: {isFull ? "Full" : (truck.availability_status || "Available")}</Text>
 
-              <TouchableOpacity style={styles.offerButton} onPress={() => handleBookPartial(truck)}>
-                <Ionicons name="send-outline" size={18} color="#fff" />
-                <Text style={styles.offerButtonText}>Book Partial</Text>
-              </TouchableOpacity>
-            </View>
-          ))
+                <TouchableOpacity
+                  style={[styles.offerButton, isFull && styles.disabledButton]}
+                  onPress={() => handleBookPartial(truck)}
+                  disabled={isFull}
+                >
+                  <Ionicons name="send-outline" size={18} color="#fff" />
+                  <Text style={styles.offerButtonText}>{isFull ? "Not Available" : "Book Partial"}</Text>
+                </TouchableOpacity>
+              </View>
+            );
+          })
         )}
       </ScrollView>
     </View>
@@ -271,7 +308,14 @@ export default function PartialTruckPage() {
 
   return (
     <Drawer.Navigator
-      drawerContent={(props) => <TraderDrawerContent {...props} onLogout={handleLogout} />}
+      drawerContent={(props) => (
+        <AppDrawerContent
+          {...props}
+          items={traderDrawerItems}
+          onLogout={handleLogout}
+          defaultUserLabel="Trader"
+        />
+      )}
       screenOptions={{
         headerShown: false,
         drawerType: "front",
@@ -308,6 +352,7 @@ const styles = StyleSheet.create({
   capacityText: { color: "#c12443", fontSize: 13, fontWeight: "700" },
   infoText: { color: "#c7cfd8", fontSize: 13, marginBottom: 6 },
   offerButton: { marginTop: 10, height: 46, borderRadius: 14, backgroundColor: "#c12443", flexDirection: "row", alignItems: "center", justifyContent: "center" },
+  disabledButton: { opacity: 0.5 },
   offerButtonText: { color: "#fff", fontSize: 15, fontWeight: "700", marginLeft: 8 },
   drawerContainer: { flex: 1, backgroundColor: "#111" },
   drawerHeader: { padding: 20, paddingTop: 40, alignItems: "center" },

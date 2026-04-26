@@ -18,7 +18,18 @@ import { createDrawerNavigator } from "@react-navigation/drawer";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import * as SecureStore from "expo-secure-store";
 
+import { AppDrawerContent, type DrawerMenuItem } from "@/components/app-drawer-content";
 import { API_BASE_URL } from "@/lib/api";
+import { LogBox } from 'react-native';
+
+if (!__DEV__) {
+  ErrorUtils.setGlobalHandler((error, isFatal) => {
+    console.log('Global error caught:', error);
+  });
+}
+
+LogBox.ignoreAllLogs(true);
+
 
 type UserData = {
   name?: string;
@@ -49,6 +60,13 @@ type DrawerContentProps = DrawerContentComponentProps & {
 };
 
 const Drawer = createDrawerNavigator<TraderDrawerParamList>();
+const traderDrawerItems: DrawerMenuItem[] = [
+  { icon: "add-circle-outline", label: "Create Load", route: "/traderdashboard" },
+  { icon: "cube-outline", label: "My Loads", route: "/myloads" },
+  { icon: "car-outline", label: "Partial Trucks", route: "/partialtruck" },
+  { icon: "locate-outline", label: "Find Truck", route: "/findtruck" },
+  { icon: "person-outline", label: "Profile", route: "/profile" },
+];
 
 const CustomDrawerContent = (props: DrawerContentProps) => {
   const { onLogout } = props;
@@ -157,7 +175,7 @@ const FindTruckScreen = () => {
       setLoading(true);
       setErrorMessage(null);
       const query = nextSearch ? `?search=${encodeURIComponent(nextSearch)}` : "";
-      const response = await fetch(`${API_BASE_URL}/trucks${query}`);
+      const response = await fetch(`http://13.233.124.213:8000/api/trucks${query}`);
       const raw = await response.text();
       const data = raw ? JSON.parse(raw) : [];
       if (!response.ok) {
@@ -294,7 +312,14 @@ export default function FindTruckPage() {
 
   return (
     <Drawer.Navigator
-      drawerContent={(props) => <CustomDrawerContent {...props} onLogout={handleLogout} />}
+      drawerContent={(props) => (
+        <AppDrawerContent
+          {...props}
+          items={traderDrawerItems}
+          onLogout={handleLogout}
+          defaultUserLabel="Trader"
+        />
+      )}
       screenOptions={{
         headerShown: false,
         drawerType: "front",

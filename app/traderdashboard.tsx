@@ -15,15 +15,17 @@ import {
   Platform,
 } from "react-native";
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE, type MapPressEvent, type Region } from "react-native-maps";
+import DateTimePicker, { type DateTimePickerEvent } from "@react-native-community/datetimepicker";
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import { useRouter } from 'expo-router';
-import type { DrawerContentComponentProps, DrawerNavigationProp } from '@react-navigation/drawer';
+import type { DrawerNavigationProp } from '@react-navigation/drawer';
 import { createDrawerNavigator } from '@react-navigation/drawer';
-import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { useNavigation } from '@react-navigation/native';
 import * as SecureStore from 'expo-secure-store';
 
+import { AppDrawerContent, type DrawerMenuItem } from '@/components/app-drawer-content';
 import { API_BASE_URL } from '@/lib/api';
 
 type UserData = {
@@ -41,6 +43,9 @@ type SelectedDriverOffer = {
   driverName?: string;
   truckType?: string;
   registrationNo?: string;
+  pickupCity?: string;
+  dropCity?: string;
+  remainingCapacity?: string | number;
   forcePartial?: boolean;
 };
 
@@ -57,10 +62,6 @@ type TraderDrawerParamList = {
   "Create Load": undefined;
 };
 
-type DrawerContentProps = DrawerContentComponentProps & {
-  onLogout?: () => void;
-};
-
 const { width } = Dimensions.get('window');
 
 // Constants for rate calculation
@@ -70,197 +71,13 @@ const RATE_PER_TON = 500; // Rs per ton
 // Create Drawer Navigator
 const Drawer = createDrawerNavigator<TraderDrawerParamList>();
 
-// Custom Drawer Content with User Data
-const CustomDrawerContent = (props: DrawerContentProps) => {
-  const { onLogout } = props;
-  const [userData, setUserData] = useState<UserData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const router = useRouter();
-
-  // Load user data when drawer opens or screen focuses
-  const loadUserData = async () => {
-    try {
-      const userDataString = await SecureStore.getItemAsync('userData');
-      if (userDataString) {
-        const user = JSON.parse(userDataString) as UserData;
-        setUserData(user);
-        
-        // You can fetch user's load stats from your API here
-        const userId = user.id || user._id;
-        if (userId) {
-          await fetchUserLoadStats(userId);
-        }
-      }
-    } catch (error) {
-      console.error('Error loading user data:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchUserLoadStats = async (userId: string | number) => {
-    try {
-      // Example API call to get user's load statistics
-      const response = await fetch(`${API_BASE_URL}/user/loads/stats?userId=${userId}`);
-      if (response.ok) {
-        const stats = await response.json();
-        // setLoadStats(stats);
-      }
-    } catch (_error) {
-      // Ignore non-critical drawer stats failures to avoid noisy network errors.
-    }
-  };
-
-  // Load data when component mounts
-  useEffect(() => {
-    loadUserData();
-  }, []);
-
-  // Reload data when drawer is opened
-  useFocusEffect(
-    React.useCallback(() => {
-      loadUserData();
-    }, [])
-  );
-
-  const handleLogout = async () => {
-    Alert.alert(
-      "Logout",
-      "Are you sure you want to logout?",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Logout",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              await SecureStore.deleteItemAsync('userData');
-              await SecureStore.deleteItemAsync('userToken');
-              
-              // Close drawer first
-              props.navigation.closeDrawer();
-              
-              // Call the logout function from parent
-              if (onLogout) {
-                onLogout();
-              }
-            } catch (error) {
-              console.error('Error during logout:', error);
-              Alert.alert("Error", "Failed to logout. Please try again.");
-            }
-          }
-        }
-      ]
-    );
-  };
-
-  const navigateToPage = (pageName: string) => {
-    props.navigation.closeDrawer();
-    router.push(pageName as never);
-  };
-
-  return (
-    <View style={styles.drawerContainer}>
-      {/* Drawer Header with Gradient */}
-      <LinearGradient
-        colors={['#c12443', '#a01e36']}
-        style={styles.drawerHeader}
-      >
-        {loading ? (
-          <View style={styles.drawerUserInfo}>
-            <ActivityIndicator size="large" color="#fff" />
-            <Text style={[styles.drawerUserName, { marginTop: 10 }]}>Loading...</Text>
-          </View>
-        ) : userData ? (
-          <View style={styles.drawerUserInfo}>
-            <View style={styles.drawerUserIcon}>
-              <Ionicons name="person-circle" size={60} color="#fff" />
-            </View>
-            <Text style={styles.drawerUserName}>
-              {userData.name || userData.fullName || userData.username || 'Driver'}
-            </Text>
-            <Text style={styles.drawerUserEmail}>
-              {userData.email || userData.phone || 'No email provided'}
-            </Text>
-            
-          </View>
-        ) : (
-          <View style={styles.drawerUserInfo}>
-            <Ionicons name="person-circle-outline" size={60} color="#fff" />
-            <Text style={styles.drawerUserName}>Guest User</Text>
-            <Text style={styles.drawerUserEmail}>Please login</Text>
-            <TouchableOpacity 
-              style={styles.loginButton}
-              onPress={() => navigateToPage('/login')}
-            >
-              <Text style={styles.loginButtonText}>Login</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-      </LinearGradient>
-
-      {/* Drawer Items */}
-      <TouchableOpacity 
-        style={styles.drawerItem}
-        onPress={() => navigateToPage('/traderdashboard')}
-      >
-        <Ionicons name="add-circle-outline" size={24} color="#fff" />
-        <Text style={styles.drawerItemText}>Create Load</Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity 
-        style={styles.drawerItem}
-        onPress={() => navigateToPage('/myloads')}
-      >
-        <Ionicons name="cube-outline" size={24} color="#fff" />
-        <Text style={styles.drawerItemText}>My Loads</Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity 
-        style={styles.drawerItem}
-        onPress={() => navigateToPage('/partialtruck')}
-      >
-        <Ionicons name="car-outline" size={24} color="#fff" />
-        <Text style={styles.drawerItemText}>Partial Trucks</Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity 
-        style={styles.drawerItem}
-        onPress={() => navigateToPage('/findtruck')}
-      >
-        <Ionicons name="locate-outline" size={24} color="#fff" />
-        <Text style={styles.drawerItemText}>Find Truck</Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity 
-        style={styles.drawerItem}
-        onPress={() => navigateToPage('/profile')}
-      >
-        <Ionicons name="person-outline" size={24} color="#fff" />
-        <Text style={styles.drawerItemText}>Profile</Text>
-      </TouchableOpacity>
-
-      {/* Drawer Footer */}
-      <View style={styles.drawerFooter}>
-        {userData && (
-          <TouchableOpacity style={styles.drawerFooterItem} onPress={handleLogout}>
-            <Ionicons name="log-out-outline" size={22} color="#999" />
-            <Text style={styles.drawerFooterText}>Logout</Text>
-          </TouchableOpacity>
-        )}
-        {userData && (
-          <View style={styles.userInfoFooter}>
-            <Ionicons name="card-outline" size={16} color="#666" />
-            <Text style={styles.userIdText}>
-              ID: {userData.id || userData._id || 'N/A'}
-            </Text>
-          </View>
-        )}
-        <Text style={styles.drawerVersion}>Version 1.0.0</Text>
-      </View>
-    </View>
-  );
-};
+const traderDrawerItems: DrawerMenuItem[] = [
+  { icon: 'add-circle-outline', label: 'Create Load', route: '/traderdashboard' },
+  { icon: 'cube-outline', label: 'My Loads', route: '/myloads' },
+  { icon: 'car-outline', label: 'Partial Trucks', route: '/partialtruck' },
+  { icon: 'locate-outline', label: 'Find Truck', route: '/findtruck' },
+  { icon: 'person-outline', label: 'Profile', route: '/profile' },
+];
 
 // Create Load Screen Component
 const CreateLoadScreen = () => {
@@ -286,6 +103,10 @@ const CreateLoadScreen = () => {
   const [calculatedBudget, setCalculatedBudget] = useState<number>(0);
   const [loadType, setLoadType] = useState<LoadType>('Normal');
   const [loadMode, setLoadMode] = useState<LoadMode>('Full Load');
+  const [scheduleDate, setScheduleDate] = useState('');
+  const [scheduleTime, setScheduleTime] = useState('');
+  const [showScheduleDatePicker, setShowScheduleDatePicker] = useState(false);
+  const [showScheduleTimePicker, setShowScheduleTimePicker] = useState(false);
 
   const mapRef = useRef<MapView | null>(null);
   const miniMapRef = useRef<MapView | null>(null);
@@ -534,27 +355,35 @@ const CreateLoadScreen = () => {
   const handleBudgetChange = (text: string) => {
     const numericBudget = text.replace(/[^0-9]/g, '');
     const budgetNum = numericBudget ? parseInt(numericBudget) : 0;
-    
-    // Check if budget is less than calculated amount
     if (budgetNum < calculatedBudget && calculatedBudget > 0) {
-      Alert.alert(
-        "Budget Too Low",
-        `Budget cannot be less than the calculated amount of PKR ${calculatedBudget.toLocaleString()}\n\n` +
-        `Calculated breakdown:\n` +
-        `• Distance: ${routeDistanceValue?.toFixed(1) || 0} km × PKR ${RATE_PER_KM} = PKR ${((routeDistanceValue || 0) * RATE_PER_KM).toLocaleString()}\n` +
-        `• Weight: ${weightValue} kg (${(weightValue/1000).toFixed(2)} tons) × PKR ${RATE_PER_TON} = PKR ${((weightValue/1000) * RATE_PER_TON).toLocaleString()}\n` +
-        `• Total: PKR ${calculatedBudget.toLocaleString()}`,
-        [
-          { text: "OK", onPress: () => setBudget(calculatedBudget.toString()) }
-        ]
-      );
-    } else {
-      setBudget(numericBudget);
+      setBudget(calculatedBudget.toString());
+      return;
     }
+    setBudget(numericBudget);
+  };
+
+  const handleBudgetIncrease = () => {
+    const current = parseInt(budget || "0", 10) || calculatedBudget || 0;
+    setBudget(String(current + 50));
+  };
+
+  const handleBudgetDecrease = () => {
+    const current = parseInt(budget || "0", 10) || 0;
+    const nextValue = current - 50;
+    if (nextValue < calculatedBudget) {
+      setBudget(String(calculatedBudget));
+      return;
+    }
+    setBudget(String(nextValue));
   };
 
   const submitLoadData = async () => {
     if (!isFormValid()) return;
+
+    if ((scheduleDate && !scheduleTime) || (!scheduleDate && scheduleTime)) {
+      Alert.alert("Schedule required", "Please provide both schedule date and schedule time.");
+      return;
+    }
     
     // Final validation check
     const budgetNum = parseInt(budget);
@@ -568,6 +397,15 @@ const CreateLoadScreen = () => {
       );
       return;
     }
+
+    if (selectedDriverOffer?.forcePartial) {
+      const maxAvailable = Number(selectedDriverOffer.remainingCapacity ?? 0);
+      const requestedWeight = Number(weight || 0);
+      if (!Number.isNaN(maxAvailable) && !Number.isNaN(requestedWeight) && requestedWeight > maxAvailable) {
+        Alert.alert("Capacity Exceeded", "Entered load exceeds available truck capacity");
+        return;
+      }
+    }
     
     setIsSubmitting(true);
     
@@ -575,23 +413,50 @@ const CreateLoadScreen = () => {
     const pickupLocationStr = pickup ? `${pickup.latitude},${pickup.longitude}` : '';
     const dropLocationStr = drop ? `${drop.latitude},${drop.longitude}` : '';
     
+    let pickupDateTime: string | null = null;
+    if (scheduleDate && scheduleTime) {
+      const [yearRaw, monthRaw, dayRaw] = scheduleDate.split("-");
+      const [hourRaw, minuteRaw] = scheduleTime.split(":");
+      const year = Number(yearRaw);
+      const month = Number(monthRaw);
+      const day = Number(dayRaw);
+      const hour = Number(hourRaw);
+      const minute = Number(minuteRaw);
+
+      if (
+        Number.isFinite(year) &&
+        Number.isFinite(month) &&
+        Number.isFinite(day) &&
+        Number.isFinite(hour) &&
+        Number.isFinite(minute)
+      ) {
+        const localScheduled = new Date(year, month - 1, day, hour, minute, 0, 0);
+        pickupDateTime = localScheduled.toISOString();
+      }
+    }
+
     // Prepare data matching Django model
     const loadData = {
       user_id: currentUser?.id || currentUser?._id,
       driver_id: selectedDriverOffer?.driverId,
+      pickup_city: selectedDriverOffer?.pickupCity,
+      drop_city: selectedDriverOffer?.dropCity,
       pickup_location: pickupLocationStr,
       drop_location: dropLocationStr,
       weight: parseFloat(weight),
       load_type: loadType,
       load_mode: selectedDriverOffer?.forcePartial ? 'Partial' : (loadMode === 'Full Load' ? 'Full' : 'Partial'),
       budget_rate: parseFloat(budget),
+      final_budget: parseFloat(budget),
+      pickup_time: pickupDateTime,
+      is_scheduled: Boolean(pickupDateTime),
       distance_km: routeDistanceValue,
       calculated_budget: calculatedBudget,
       status: selectedDriverOffer?.driverId ? 'Pre Pending' : 'Pending'
     };
 
     try {
-      const response = await fetch(`${API_BASE_URL}/create-load/`, {
+      const response = await fetch(`http://13.233.124.213:8000/api/create-load/`, {
         method: 'POST',
         headers: {
           'Accept': 'application/json',
@@ -625,6 +490,8 @@ const CreateLoadScreen = () => {
               setRouteDuration(null);
               setRouteCoordinates([]);
               setRouteError(null);
+              setScheduleDate('');
+              setScheduleTime('');
               setSelectedDriverOffer(null);
               await SecureStore.deleteItemAsync('selectedDriverOffer');
             }
@@ -644,6 +511,15 @@ const CreateLoadScreen = () => {
             errorMessage = errors.join('\n');
           }
         }
+        if (
+          typeof errorMessage === "string" &&
+          (
+            (errorMessage.toLowerCase().includes("truck capacity") && errorMessage.toLowerCase().includes("exceed"))
+            || errorMessage.toLowerCase().includes("available truck capacity")
+          )
+        ) {
+          errorMessage = "Entered load exceeds available truck capacity";
+        }
         Alert.alert("Error", errorMessage);
       }
     } catch (error) {
@@ -661,6 +537,35 @@ const CreateLoadScreen = () => {
   };
 
   const formatNumber = (text: string) => text.replace(/[^0-9]/g, '');
+  const toDateLabel = (value: string) => (value ? value : "Select date");
+  const toTimeLabel = (value: string) => (value ? value : "Select time");
+
+  const formatDateForInput = (date: Date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  };
+
+  const formatTimeForInput = (date: Date) => {
+    const hours = String(date.getHours()).padStart(2, "0");
+    const minutes = String(date.getMinutes()).padStart(2, "0");
+    return `${hours}:${minutes}`;
+  };
+
+  const onScheduleDateChange = (_event: DateTimePickerEvent, date?: Date) => {
+    setShowScheduleDatePicker(false);
+    if (date) {
+      setScheduleDate(formatDateForInput(date));
+    }
+  };
+
+  const onScheduleTimeChange = (_event: DateTimePickerEvent, date?: Date) => {
+    setShowScheduleTimePicker(false);
+    if (date) {
+      setScheduleTime(formatTimeForInput(date));
+    }
+  };
 
   const getRouteColor = () => routeError ? '#FFA500' : '#c12443';
 
@@ -720,6 +625,11 @@ const CreateLoadScreen = () => {
               <Text style={styles.offerBannerText}>
                 {selectedDriverOffer.driverName || 'Driver'} • {selectedDriverOffer.truckType || 'Truck'} • {selectedDriverOffer.registrationNo || 'No reg'}
               </Text>
+              {selectedDriverOffer.remainingCapacity ? (
+                <Text style={styles.offerBannerText}>
+                  Available: {selectedDriverOffer.remainingCapacity} kg
+                </Text>
+              ) : null}
               <Text style={styles.offerBannerText}>
                 This load will be submitted as Pre Pending{selectedDriverOffer?.forcePartial ? " (Partial only)" : ""}.
               </Text>
@@ -884,20 +794,67 @@ const CreateLoadScreen = () => {
 
           {/* Budget Input */}
           <View style={styles.inputGroup}>
-            <Text style={styles.label}>Budget Rate (Minimum: PKR {calculatedBudget.toLocaleString()})</Text>
+            <Text style={styles.label}>Calculated Budget: PKR {calculatedBudget.toLocaleString()}</Text>
             <View style={styles.inputWrapper}>
               <Ionicons name="cash-outline" size={20} color="#c12443" />
               <Text style={styles.inputPrefix}>PKR</Text>
               <TextInput
                 style={[styles.input, styles.inputWithPrefix]}
-                placeholder="Enter budget"
+                placeholder="Set final budget"
                 placeholderTextColor="#666"
                 value={budget}
                 onChangeText={handleBudgetChange}
                 keyboardType="numeric"
               />
             </View>
-            
+            <View style={styles.budgetButtonsRow}>
+              <TouchableOpacity style={styles.budgetButton} onPress={handleBudgetIncrease}>
+                <Text style={styles.budgetButtonText}>+50</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.budgetButton, (parseInt(budget || "0", 10) <= calculatedBudget) && styles.budgetButtonDisabled]}
+                onPress={handleBudgetDecrease}
+                disabled={parseInt(budget || "0", 10) <= calculatedBudget}
+              >
+                <Text style={styles.budgetButtonText}>-50</Text>
+              </TouchableOpacity>
+            </View>
+            {parseInt(budget || "0", 10) <= calculatedBudget ? (
+              <Text style={styles.helperText}>Budget cannot be lower than minimum calculated amount</Text>
+            ) : null}
+          </View>
+
+          {/* Load Type */}
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Schedule Date (Optional)</Text>
+            <TouchableOpacity style={styles.inputWrapper} onPress={() => setShowScheduleDatePicker(true)}>
+              <Ionicons name="calendar-outline" size={20} color="#c12443" />
+              <Text style={[styles.input, { color: scheduleDate ? "#fff" : "#666" }]}>{toDateLabel(scheduleDate)}</Text>
+            </TouchableOpacity>
+            {showScheduleDatePicker ? (
+              <DateTimePicker
+                value={new Date()}
+                mode="date"
+                display="default"
+                onChange={onScheduleDateChange}
+              />
+            ) : null}
+          </View>
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Schedule Time (Optional)</Text>
+            <TouchableOpacity style={styles.inputWrapper} onPress={() => setShowScheduleTimePicker(true)}>
+              <Ionicons name="time-outline" size={20} color="#c12443" />
+              <Text style={[styles.input, { color: scheduleTime ? "#fff" : "#666" }]}>{toTimeLabel(scheduleTime)}</Text>
+            </TouchableOpacity>
+            {showScheduleTimePicker ? (
+              <DateTimePicker
+                value={new Date()}
+                mode="time"
+                display="default"
+                onChange={onScheduleTimeChange}
+              />
+            ) : null}
           </View>
 
           {/* Load Type */}
@@ -1068,7 +1025,14 @@ export default function TraderDashboard() {
 
   return (
     <Drawer.Navigator
-      drawerContent={(props) => <CustomDrawerContent {...props} onLogout={handleLogout} />}
+      drawerContent={(props) => (
+        <AppDrawerContent
+          {...props}
+          items={traderDrawerItems}
+          onLogout={handleLogout}
+          defaultUserLabel="Trader"
+        />
+      )}
       screenOptions={{
         headerShown: false,
         drawerType: 'front',
@@ -1339,6 +1303,28 @@ const styles = StyleSheet.create({
   inputSuffix: {
     fontSize: 14,
     color: '#666',
+  },
+  budgetButtonsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 10,
+  },
+  budgetButton: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+    backgroundColor: '#111',
+  },
+  budgetButtonDisabled: {
+    opacity: 0.5,
+  },
+  budgetButtonText: {
+    color: '#fff',
+    fontWeight: '700',
   },
   optionsRow: {
     flexDirection: 'row',

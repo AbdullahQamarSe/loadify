@@ -20,7 +20,18 @@ import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import * as Location from "expo-location";
 import * as SecureStore from "expo-secure-store";
 
+import { AppDrawerContent, type DrawerMenuItem } from "@/components/app-drawer-content";
 import { API_BASE_URL } from "@/lib/api";
+import { LogBox } from 'react-native';
+
+if (!__DEV__) {
+  ErrorUtils.setGlobalHandler((error, isFatal) => {
+    console.log('Global error caught:', error);
+  });
+}
+
+LogBox.ignoreAllLogs(true);
+
 
 type UserData = {
   id?: string | number;
@@ -51,6 +62,12 @@ type DrawerContentProps = DrawerContentComponentProps & {
 };
 
 const Drawer = createDrawerNavigator<DriverDrawerParamList>();
+const driverDrawerItems: DrawerMenuItem[] = [
+  { icon: "time-outline", label: "Driver Dashboard", route: "/driverdashboard" },
+  { icon: "chatbubbles-outline", label: "Requests", route: "/requests" },
+  { icon: "cube-outline", label: "Current Loads", route: "/current" },
+  { icon: "person-outline", label: "Profile", route: "/driverprofile" },
+];
 const { width } = Dimensions.get("window");
 
 async function readJsonOrText(response: Response) {
@@ -189,7 +206,7 @@ const DriverProfileScreen = () => {
           accuracy: Location.Accuracy.Balanced,
         });
 
-        await fetch(`${API_BASE_URL}/driver/location-sync`, {
+        await fetch(`http://13.233.124.213:8000/api/driver/location-sync`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -230,7 +247,7 @@ const DriverProfileScreen = () => {
         throw new Error("Driver email not found");
       }
 
-      const response = await fetch(`${API_BASE_URL}/user/profile?email=${encodeURIComponent(sessionUser.email)}`);
+      const response = await fetch(`http://13.233.124.213:8000/api/user/profile?email=${encodeURIComponent(sessionUser.email)}`);
       const user = await readJsonOrText(response);
       if (!response.ok) {
         throw new Error(user.error || "Failed to load profile");
@@ -272,7 +289,7 @@ const DriverProfileScreen = () => {
 
     try {
       setIsSaving(true);
-      const response = await fetch(`${API_BASE_URL}/user/update`, {
+      const response = await fetch(`http://13.233.124.213:8000/api/user/update`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -429,7 +446,14 @@ export default function DriverProfilePage() {
 
   return (
     <Drawer.Navigator
-      drawerContent={(props) => <CustomDrawerContent {...props} onLogout={handleLogout} />}
+      drawerContent={(props) => (
+        <AppDrawerContent
+          {...props}
+          items={driverDrawerItems}
+          onLogout={handleLogout}
+          defaultUserLabel="Driver"
+        />
+      )}
       screenOptions={{
         headerShown: false,
         drawerType: "front",

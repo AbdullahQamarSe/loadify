@@ -19,7 +19,9 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "usesCleartextTraffic": true,
+      "package": "com.abdi1122.loadify"
     },
     "web": {
       "output": "static",
@@ -47,14 +49,19 @@
           }
         }
       ],
-      "expo-secure-store"
+      "expo-secure-store",
+      "@react-native-community/datetimepicker"
     ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
     },
     "extra": {
-      "apiUrl": "http://192.168.18.73/api"
+      "apiUrl": "http://13.233.124.213:8000/api",
+      "router": {},
+      "eas": {
+        "projectId": "57d94d16-3ca6-4073-b491-cbc9ecce8d8b"
+      }
     }
   }
 }

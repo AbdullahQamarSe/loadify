@@ -3,8 +3,17 @@ import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import 'react-native-reanimated';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { LogBox } from 'react-native';
+
+if (!__DEV__) {
+  ErrorUtils.setGlobalHandler((error, isFatal) => {
+    console.log('Global error caught:', error);
+  });
+}
+
+LogBox.ignoreAllLogs(true);
+
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
@@ -18,6 +27,12 @@ export default function RootLayout() {
           <Stack.Screen name="driverprofile" />
           <Stack.Screen name="signup" />
           <Stack.Screen name="traderdashboard" />
+          <Stack.Screen name="smedashboard" />
+          <Stack.Screen name="sme-repeat-orders" />
+          <Stack.Screen name="sme-schedule" />
+          <Stack.Screen name="sme-bulk-booking" />
+          <Stack.Screen name="sme-invoices" />
+          <Stack.Screen name="sme-track-shipments" />
           <Stack.Screen name="current" />
           <Stack.Screen name="request" />
           <Stack.Screen name="requests" />
@@ -26,7 +41,7 @@ export default function RootLayout() {
           <Stack.Screen name="findtruck" />
           <Stack.Screen name="profile" />
         </Stack>
-        <StatusBar style="auto" />
+        <StatusBar style="light" backgroundColor="#c12443" translucent={false} />
       </ThemeProvider>
     </GestureHandlerRootView>
   );

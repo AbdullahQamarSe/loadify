@@ -18,6 +18,16 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useRouter } from 'expo-router';
 
 import { API_BASE_URL, Role } from '@/lib/api';
+import { LogBox } from 'react-native';
+
+if (!__DEV__) {
+  ErrorUtils.setGlobalHandler((error, isFatal) => {
+    console.log('Global error caught:', error);
+  });
+}
+
+LogBox.ignoreAllLogs(true);
+
 
 const roleOptions: { key: Role; label: string; icon: string }[] = [
   { key: 'trader', label: 'Trader', icon: 'store' },
@@ -94,7 +104,7 @@ export default function SignupScreen() {
       address: form.address ?? "",
     };
 
-    const response = await fetch(`${API_BASE_URL}/register/`, {
+    const response = await fetch(`http://13.233.124.213:8000/api/register/`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

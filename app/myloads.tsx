@@ -21,7 +21,18 @@ import { createDrawerNavigator } from "@react-navigation/drawer";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import * as SecureStore from "expo-secure-store";
 
+import { AppDrawerContent, type DrawerMenuItem } from "@/components/app-drawer-content";
 import { API_BASE_URL } from "@/lib/api";
+import { LogBox } from 'react-native';
+
+if (!__DEV__) {
+  ErrorUtils.setGlobalHandler((error, isFatal) => {
+    console.log('Global error caught:', error);
+  });
+}
+
+LogBox.ignoreAllLogs(true);
+
 
 type UserData = {
   id?: string | number;
@@ -37,6 +48,8 @@ type LoadItem = {
   id: number;
   pickup_location?: string | null;
   drop_location?: string | null;
+  drop_lat?: string | number | null;
+  drop_lng?: string | number | null;
   weight?: string | number | null;
   load_type?: string | null;
   load_mode?: string | null;
@@ -71,6 +84,13 @@ type DrawerContentProps = DrawerContentComponentProps & {
 };
 
 const Drawer = createDrawerNavigator<TraderDrawerParamList>();
+const traderDrawerItems: DrawerMenuItem[] = [
+  { icon: "add-circle-outline", label: "Create Load", route: "/traderdashboard" },
+  { icon: "cube-outline", label: "My Loads", route: "/myloads" },
+  { icon: "car-outline", label: "Partial Trucks", route: "/partialtruck" },
+  { icon: "locate-outline", label: "Find Truck", route: "/findtruck" },
+  { icon: "person-outline", label: "Profile", route: "/profile" },
+];
 const { width, height } = Dimensions.get("window");
 
 const darkMapStyle = [
@@ -86,6 +106,21 @@ const parseLocation = (value?: string | null): LocationPoint | null => {
   const [lat, lng] = value.split(",").map((item) => Number(item.trim()));
   if (Number.isNaN(lat) || Number.isNaN(lng)) return null;
   return { latitude: lat, longitude: lng };
+};
+
+const toCoordinateNumber = (value?: string | number | null): number | null => {
+  if (value == null) return null;
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
+};
+
+const resolveDropPoint = (load: LoadItem): LocationPoint | null => {
+  const latitude = toCoordinateNumber(load.drop_lat);
+  const longitude = toCoordinateNumber(load.drop_lng);
+  if (latitude != null && longitude != null) {
+    return { latitude, longitude };
+  }
+  return parseLocation(load.drop_location);
 };
 
 const parseDriverPoint = (load: LoadItem): LocationPoint | null => {
@@ -258,21 +293,18 @@ const MyLoadsScreen = () => {
   const [selectedLoad, setSelectedLoad] = useState<LoadItem | null>(null);
   const [routeInfo, setRouteInfo] = useState<RouteInfo | null>(null);
 
-  const openMapForLoad = async (load: LoadItem) => {
+  const buildRouteForLoad = async (load: LoadItem, silent = false) => {
     const driverPoint = parseDriverPoint(load);
-    const dropPoint = parseLocation(load.drop_location);
+    const dropPoint = resolveDropPoint(load);
+    if (!driverPoint || !dropPoint) return false;
 
-    if (!driverPoint || !dropPoint) {
-      Alert.alert("Map unavailable", "Driver location or drop location is not available yet.");
-      return;
+    if (!silent || !routeInfo) {
+      setRouteInfo({
+        coordinates: [driverPoint, dropPoint],
+        distanceText: "Loading route...",
+        loading: true,
+      });
     }
-
-    setSelectedLoad(load);
-    setRouteInfo({
-      coordinates: [driverPoint, dropPoint],
-      distanceText: "Loading route...",
-      loading: true,
-    });
 
     try {
       const response = await fetch(
@@ -294,7 +326,7 @@ const MyLoadsScreen = () => {
           distanceText: `${distanceKm} km (${durationMin} min)`,
           loading: false,
         });
-        return;
+        return true;
       }
     } catch (error) {
       console.error("Error loading trader route preview:", error);
@@ -305,6 +337,16 @@ const MyLoadsScreen = () => {
       distanceText: "Route preview unavailable",
       loading: false,
     });
+    return true;
+  };
+
+  const openMapForLoad = async (load: LoadItem) => {
+    const canRenderRoute = await buildRouteForLoad(load);
+    if (!canRenderRoute) {
+      Alert.alert("Map unavailable", "Driver location or drop location is not available yet.");
+      return;
+    }
+    setSelectedLoad(load);
   };
 
   const closeMap = () => {
@@ -330,7 +372,7 @@ const MyLoadsScreen = () => {
       }
 
       setCurrentUser(user);
-      const response = await fetch(`${API_BASE_URL}/user/loads?userId=${encodeURIComponent(String(userId))}`);
+      const response = await fetch(`http://13.233.124.213:8000/api/user/loads?userId=${encodeURIComponent(String(userId))}`);
       const data = await response.json();
       if (!response.ok) {
         throw new Error(data.error || "Failed to load my loads");
@@ -358,7 +400,7 @@ const MyLoadsScreen = () => {
     let intervalId: ReturnType<typeof setInterval> | null = null;
     setLoading(true);
     loadMyLoads();
-    intervalId = setInterval(loadMyLoads, 5000);
+    intervalId = setInterval(loadMyLoads, 7000);
 
     return () => {
       if (intervalId) {
@@ -372,6 +414,22 @@ const MyLoadsScreen = () => {
       loadMyLoads();
     }, [])
   );
+
+  useEffect(() => {
+    if (!selectedLoad) return;
+    const latestLoad = loads.find((item) => item.id === selectedLoad.id);
+    if (!latestLoad) {
+      closeMap();
+      return;
+    }
+    if (latestLoad !== selectedLoad) {
+      setSelectedLoad(latestLoad);
+    }
+    buildRouteForLoad(latestLoad, true);
+  }, [loads, selectedLoad?.id]);
+
+  const selectedDriverPoint = selectedLoad ? parseDriverPoint(selectedLoad) : null;
+  const selectedDropPoint = selectedLoad ? resolveDropPoint(selectedLoad) : null;
 
   return (
     <View style={styles.container}>
@@ -424,6 +482,7 @@ const MyLoadsScreen = () => {
               </Text>
 
               <Text style={styles.metaText}>Budget: {load.budget_rate || "N/A"}</Text>
+              {load.pickup_time ? <Text style={styles.metaText}>Schedule: {load.pickup_time}</Text> : null}
 
               {load.status === "Picked" ? (
                 <View style={styles.locationBox}>
@@ -465,24 +524,25 @@ const MyLoadsScreen = () => {
             <Text style={styles.locationText}>
               Last update: {selectedLoad?.driver_location_updated_at || "Waiting for update"}
             </Text>
+            <Text style={styles.locationText}>Auto refresh every 7 seconds</Text>
           </View>
 
-          {selectedLoad && parseDriverPoint(selectedLoad) && parseLocation(selectedLoad.drop_location) ? (
+          {selectedLoad && selectedDriverPoint && selectedDropPoint ? (
             <MapView
               style={styles.map}
               provider={PROVIDER_GOOGLE}
               initialRegion={getRegionForPoints([
-                parseDriverPoint(selectedLoad) as LocationPoint,
-                parseLocation(selectedLoad.drop_location) as LocationPoint,
+                selectedDriverPoint,
+                selectedDropPoint,
               ])}
               customMapStyle={darkMapStyle}
             >
-              <Marker coordinate={parseDriverPoint(selectedLoad) as LocationPoint}>
+              <Marker coordinate={selectedDriverPoint}>
                 <View style={[styles.mapMarker, styles.driverMarker]}>
                   <Ionicons name="car-sport" size={18} color="#fff" />
                 </View>
               </Marker>
-              <Marker coordinate={parseLocation(selectedLoad.drop_location) as LocationPoint}>
+              <Marker coordinate={selectedDropPoint}>
                 <View style={[styles.mapMarker, styles.dropMarker]}>
                   <Ionicons name="flag" size={18} color="#fff" />
                 </View>
@@ -520,7 +580,14 @@ export default function MyLoadsPage() {
 
   return (
     <Drawer.Navigator
-      drawerContent={(props) => <CustomDrawerContent {...props} onLogout={handleLogout} />}
+      drawerContent={(props) => (
+        <AppDrawerContent
+          {...props}
+          items={traderDrawerItems}
+          onLogout={handleLogout}
+          defaultUserLabel="Trader"
+        />
+      )}
       screenOptions={{
         headerShown: false,
         drawerType: "front",

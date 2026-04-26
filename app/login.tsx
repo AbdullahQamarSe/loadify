@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Animated,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   SafeAreaView,
   ScrollView,
@@ -20,6 +21,16 @@ import * as SecureStore from 'expo-secure-store';
 import NetInfo from '@react-native-community/netinfo';
 
 import { API_BASE_URL, Role } from '@/lib/api';
+import { LogBox } from 'react-native';
+
+if (!__DEV__) {
+  ErrorUtils.setGlobalHandler((error, isFatal) => {
+    console.log('Global error caught:', error);
+  });
+}
+
+LogBox.ignoreAllLogs(true);
+
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -31,6 +42,13 @@ export default function LoginScreen() {
   const [messageType, setMessageType] = useState<'error' | 'success' | null>(null);
   const [focusedInput, setFocusedInput] = useState<string | null>(null);
   const [networkError, setNetworkError] = useState<boolean>(false);
+  const [forgotVisible, setForgotVisible] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [forgotOtp, setForgotOtp] = useState('');
+  const [forgotNewPassword, setForgotNewPassword] = useState('');
+  const [forgotLoading, setForgotLoading] = useState(false);
+  const [forgotMessage, setForgotMessage] = useState<string | null>(null);
+  const [forgotMessageType, setForgotMessageType] = useState<'error' | 'success' | null>(null);
 
   // Animation values
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -118,7 +136,7 @@ export default function LoginScreen() {
       console.log('Attempting login with:', { email, password: '***' });
       
       // Send login request to the specified endpoint
-      const response = await fetch(`${API_BASE_URL}/login/`, {
+      const response = await fetch(`http://13.233.124.213:8000/api/login/`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -226,6 +244,74 @@ export default function LoginScreen() {
     handleLogin();
   };
 
+  const handleSendOtp = async () => {
+    setForgotMessage(null);
+    setForgotMessageType(null);
+
+    if (!forgotEmail) {
+      setForgotMessage('Email is required.');
+      setForgotMessageType('error');
+      return;
+    }
+
+    setForgotLoading(true);
+    try {
+      const response = await fetch(`http://13.233.124.213:8000/api/forgot-password/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: forgotEmail }),
+      });
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to send OTP');
+      }
+      setForgotMessage('OTP sent to your email.');
+      setForgotMessageType('success');
+    } catch (error: any) {
+      setForgotMessage(error?.message || 'Failed to send OTP');
+      setForgotMessageType('error');
+    } finally {
+      setForgotLoading(false);
+    }
+  };
+
+  const handleResetPassword = async () => {
+    setForgotMessage(null);
+    setForgotMessageType(null);
+
+    if (!forgotEmail || !forgotOtp || !forgotNewPassword) {
+      setForgotMessage('Email, OTP and new password are required.');
+      setForgotMessageType('error');
+      return;
+    }
+
+    setForgotLoading(true);
+    try {
+      const response = await fetch(`http://13.233.124.213:8000/api/reset-password/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: forgotEmail,
+          otp: forgotOtp,
+          new_password: forgotNewPassword,
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to reset password');
+      }
+      setForgotMessage('Password reset successful. You can now log in.');
+      setForgotMessageType('success');
+      setPassword('');
+      setTimeout(() => setForgotVisible(false), 800);
+    } catch (error: any) {
+      setForgotMessage(error?.message || 'Failed to reset password');
+      setForgotMessageType('error');
+    } finally {
+      setForgotLoading(false);
+    }
+  };
+
   return (
     <LinearGradient colors={['#0a0f1e', '#141b2b']} style={styles.background}>
       <SafeAreaView style={styles.safeArea}>
@@ -250,7 +336,7 @@ export default function LoginScreen() {
                 <Text style={styles.subtitle}>Sign in to continue</Text>
               </View>
               <View style={styles.iconGlow}>
-                <Icon name="lock" size={90} color="#e94560" />
+                <Icon name="local-shipping" size={90} color="#e94560" />
               </View>
             </LinearGradient>
 
@@ -372,6 +458,17 @@ export default function LoginScreen() {
               </Animated.View>
 
               {/* Switch to Signup */}
+              <TouchableOpacity
+                style={styles.switchAuth}
+                onPress={() => {
+                  setForgotVisible(true);
+                  setForgotEmail(email);
+                  setForgotMessage(null);
+                  setForgotMessageType(null);
+                }}>
+                <Text style={styles.switchAuthText}>Forgot password?</Text>
+              </TouchableOpacity>
+
               <TouchableOpacity style={styles.switchAuth} onPress={() => router.replace('/signup')}>
                 <Text style={styles.switchAuthText}>New here? Create an account</Text>
               </TouchableOpacity>
@@ -379,6 +476,63 @@ export default function LoginScreen() {
           </ScrollView>
         </KeyboardAvoidingView>
       </SafeAreaView>
+
+      <Modal visible={forgotVisible} transparent animationType="slide" onRequestClose={() => setForgotVisible(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Reset Password</Text>
+
+            <TextInput
+              placeholder="Email"
+              placeholderTextColor="#6b7280"
+              style={styles.modalInput}
+              keyboardType="email-address"
+              autoCapitalize="none"
+              value={forgotEmail}
+              onChangeText={setForgotEmail}
+              editable={!forgotLoading}
+            />
+
+            <TouchableOpacity style={styles.modalButton} onPress={handleSendOtp} disabled={forgotLoading}>
+              <Text style={styles.modalButtonText}>Send OTP</Text>
+            </TouchableOpacity>
+
+            <TextInput
+              placeholder="OTP Code"
+              placeholderTextColor="#6b7280"
+              style={styles.modalInput}
+              value={forgotOtp}
+              onChangeText={setForgotOtp}
+              keyboardType="number-pad"
+              editable={!forgotLoading}
+            />
+
+            <TextInput
+              placeholder="New Password"
+              placeholderTextColor="#6b7280"
+              secureTextEntry
+              style={styles.modalInput}
+              value={forgotNewPassword}
+              onChangeText={setForgotNewPassword}
+              editable={!forgotLoading}
+            />
+
+            <TouchableOpacity style={styles.modalButton} onPress={handleResetPassword} disabled={forgotLoading}>
+              {forgotLoading ? <ActivityIndicator color="#fff" /> : <Text style={styles.modalButtonText}>Reset Password</Text>}
+            </TouchableOpacity>
+
+            {forgotMessage ? (
+              <Text style={[styles.modalMessage, forgotMessageType === 'error' ? styles.errorText : styles.successText]}>
+                {forgotMessage}
+              </Text>
+            ) : null}
+
+            <TouchableOpacity style={styles.modalCloseBtn} onPress={() => setForgotVisible(false)}>
+              <Text style={styles.modalCloseText}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </LinearGradient>
   );
 }
@@ -599,5 +753,57 @@ const styles = StyleSheet.create({
     marginLeft: 8,
     fontSize: 12,
     flex: 1,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.65)',
+    justifyContent: 'center',
+    padding: 20,
+  },
+  modalCard: {
+    backgroundColor: '#111827',
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#2d3b4f',
+  },
+  modalTitle: {
+    color: '#fff',
+    fontSize: 20,
+    fontWeight: '700',
+    marginBottom: 12,
+  },
+  modalInput: {
+    backgroundColor: '#1e2a3a',
+    borderWidth: 1,
+    borderColor: '#2d3b4f',
+    borderRadius: 12,
+    color: '#fff',
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    marginBottom: 10,
+  },
+  modalButton: {
+    backgroundColor: '#e94560',
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  modalButtonText: {
+    color: '#fff',
+    fontWeight: '700',
+  },
+  modalMessage: {
+    marginTop: 4,
+    marginBottom: 10,
+  },
+  modalCloseBtn: {
+    alignItems: 'center',
+    paddingVertical: 8,
+  },
+  modalCloseText: {
+    color: '#a0aec0',
+    fontWeight: '600',
   },
 });
